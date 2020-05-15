@@ -1,0 +1,22 @@
+model_type: afterbert
+model_name_or_path: bert-base-uncased
+do_lower_case: True
+
+task_name: CoLA
+auxiliary_name: SST-2
+max_seq_length: 128
+
+per_gpu_train_batch_size: 28
+per_gpu_eval_batch_size: 50
+
+#lambd: 0.001
+
+learning_rate: !!float "2e-5"
+weight_decay: 0.01
+bias_correction: False
+
+num_train_epochs: 4.0
+max_steps: -1
+warmup_proportion: 0.1
+
+num_evals: 5

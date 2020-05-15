@@ -1,0 +1,23 @@
+#This yaml file contains options that will not be changed during experiments
+
+
+# Run evaluation during training at each logging step.
+evaluate_during_training: True
+#Pretrained config name or path if not the same as model_name
+config_name: ""
+#Pretrained tokenizer name or path if not the same as model_name
+tokenizer_name: ""
+#Where do you want to store the pre-trained models downloaded from s3
+cache_dir: "/data/data1/users/gvernikos/cache/pretrained_bert"
+#Number of updates steps to accumulate before performing a backward/update pass.
+gradient_accumulation_steps: 1
+#Epsilon for Adam optimizer.
+adam_epsilon: !!float "1e-6"
+#Max gradient norm.
+max_grad_norm: 1.0
+#For distributed training: local_rank
+local_rank: -1
+
+#For distant debugging.
+server_ip: ""
+server_port: ""
