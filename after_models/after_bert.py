@@ -3,8 +3,6 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers import BertPreTrainedModel
-
-from transformers.activations import gelu, gelu_new, swish
 from transformers.file_utils import add_start_docstrings, add_start_docstrings_to_callable
 from transformers.modeling_bert import BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING, BertModel
 
