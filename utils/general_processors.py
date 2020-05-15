@@ -2,9 +2,6 @@
 
 import logging
 import os
-
-import html
-
 import csv
 from transformers.data.processors.utils import DataProcessor, InputExample, InputFeatures
 from sklearn.model_selection import train_test_split
