@@ -481,7 +481,8 @@ class WnliProcessor(DataProcessor):
         return examples
 
 
-standard_dev_tasks = ["cola", "mnli", "mrpc", "sst-2", "sts-b", "qqp", "qnli", "rte", "wnli", "amz-el", "pubmed", "math"]
+standard_dev_tasks = ["cola", "mnli", "mrpc", "sst-2", "sts-b", "qqp", "qnli", "rte", "wnli", "amz-el", "pubmed",
+                      "math", "compsci"]
 
 
 class Trec6Processor(DataProcessor):
@@ -800,6 +801,47 @@ class MathProcessor(DataProcessor):
         return examples
 
 
+class CompSciProcessor(DataProcessor):
+    """Processor for the AMZ-El data set."""
+
+    def get_example_from_tensor_dict(self, tensor_dict):
+        """See base class."""
+        return InputExample(
+            tensor_dict["idx"].numpy(),
+            tensor_dict["sentence"].numpy().decode("utf-8"),
+            None,
+            str(tensor_dict["label"].numpy()),
+        )
+
+    def get_train_examples(self, data_dir, dom=-1):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "train.tsv")), "train", dom)
+
+    def get_dev_examples(self, data_dir, dom=-1):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev", dom)
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
+    def get_labels(self):
+        """See base class."""
+        return ["0"]
+
+    def _create_examples(self, lines, set_type, dom=-1):
+        """Creates examples."""
+        examples = []
+        for (i, line) in enumerate(lines):
+            guid = "%s-%s" % (set_type, i)
+            text_a = line[0]
+            label = "0"
+            if dom != -1:
+                label = [label, str(dom)]
+            examples.append(InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+        return examples
+
+
 processors = {
     "cola": ColaProcessor,
     "mnli": MnliProcessor,
@@ -818,6 +860,7 @@ processors = {
     "amz-el": AmazonElectronicsProcessor,
     "pubmed": PubMedProcessor,
     "math": MathProcessor,
+    "compsci": CompSciProcessor,
 }
 
 output_modes = {
@@ -838,4 +881,5 @@ output_modes = {
     "amz-el": "classification",
     "pubmed": "classification",
     "math": "classification",
+    "compsci": "classification",
 }
