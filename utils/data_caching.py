@@ -221,3 +221,54 @@ def load_after_examples(args, main, aux, mode):
 
         datasets.append(TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels))
     return datasets[0], datasets[1]
+
+
+def load_domain_examples(args, main, aux, mode):
+    """
+    This function is an extension of load_examples for multi-task setting with multiple datasets and preprocessors
+    :param args:
+    :param main:
+    :param aux:
+    :return:
+    """
+    tasks = [main, aux]
+    # the size of the smallest dataset (main dataset)
+    len_dataset = 0
+    all_input_ids, all_attention_mask, all_token_type_ids, all_labels = [], [], [], []
+
+    for i, task in enumerate(tasks):
+        cached_features_files = {}
+        data_cache_dir = "/".join(args.data_dir.split("/")[:-1])
+
+        cached_data_name = "cached_{}_{}_{}_{}".format(mode,
+                                                       list(filter(None, args.model_name_or_path.split("/"))).pop(),
+                                                       str(args.max_seq_length),
+                                                       str(task))
+        if mode != "test" and task not in standard_dev_tasks:
+            cached_data_name += "_{}".format(args.seed)
+        cached_features_file = os.path.join(data_cache_dir, "AFTER/", main, cached_data_name)
+
+        if os.path.exists(cached_features_file) and not args.overwrite_cache:
+            logger.info("Loading features from cached file %s", cached_features_file)
+            features = torch.load(cached_features_file)
+            if i == 0:
+                len_dataset = len(features)
+            else:
+                features = features[:len_dataset]
+        else:
+            raise ValueError("Cached features have not been found in ".format(cached_features_file))
+
+        # Convert to Tensors and build dataset
+        all_input_ids.append(torch.tensor([f.input_ids for f in features], dtype=torch.long))
+        # AfterBert
+        all_num_tokens = []
+        for input_id in list(all_input_ids[i]):
+            all_num_tokens.append(len(input_id.nonzero()))
+        print("Max number of tokens in a sequence :---{}---".format(max(all_num_tokens)))
+        all_attention_mask.append(torch.tensor([f.attention_mask for f in features], dtype=torch.long))
+        all_token_type_ids.append(torch.tensor([f.token_type_ids for f in features], dtype=torch.long))
+        all_labels.append(torch.tensor([f.label[1] for f in features], dtype=torch.long))
+
+    dataset = TensorDataset(torch.cat(all_input_ids), torch.cat(all_attention_mask), torch.cat(all_token_type_ids),
+                            torch.cat(all_labels))
+    return dataset

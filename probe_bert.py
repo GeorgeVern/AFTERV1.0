@@ -20,8 +20,9 @@ from transformers import (
 )
 
 from after_models.after_bert import AfterBertForSequenceClassification
+from after_models.bert_mean_pooled import BertForSequenceClassification
 from sys_config import DATA_DIR
-from utils.data_caching import cache_after_datasets, load_after_examples
+from utils.data_caching import cache_after_datasets, load_domain_examples
 from utils.metrics import compute_metrics
 from utils.general_processors import processors, output_modes
 
@@ -40,6 +41,8 @@ ALL_MODELS = sum(
 )
 
 MODEL_CLASSES = {
+    "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
+    "bert-ft": (BertConfig, BertForSequenceClassification, BertTokenizer),
     "afterbert": (BertConfig, AfterBertForSequenceClassification, BertTokenizer),
 }
 
@@ -52,30 +55,24 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
+def train(args, train_domain_dataset, model, tokenizer):
     """ Train the model """
 
     # The batch size must be halved in order to fit one batch from each domain
-    args.train_batch_size = (args.per_gpu_train_batch_size * max(1, args.n_gpu)) // 2
-    train_main_sampler = RandomSampler(train_main_dataset) if args.local_rank == -1 else DistributedSampler(
-        train_main_dataset)
-    train_main_dataloader = DataLoader(train_main_dataset, sampler=train_main_sampler, batch_size=args.train_batch_size)
-
-    train_aux_sampler = RandomSampler(train_aux_dataset) if args.local_rank == -1 else DistributedSampler(
-        train_aux_dataset)
-    train_aux_dataloader = DataLoader(train_aux_dataset, sampler=train_aux_sampler, batch_size=args.train_batch_size)
-
-    # # the length of the dataloader has been effectively doubled
-    # len_dataloader = len(train_main_dataloader) + len(train_aux_dataloader)
+    args.train_batch_size = (args.per_gpu_train_batch_size * max(1, args.n_gpu))
+    train_domain_sampler = RandomSampler(train_domain_dataset) if args.local_rank == -1 else DistributedSampler(
+        train_domain_dataset)
+    train_domain_dataloader = DataLoader(train_domain_dataset, sampler=train_domain_sampler,
+                                         batch_size=args.train_batch_size)
 
     if args.max_steps > 0:
         t_total = args.max_steps
-        args.num_train_epochs = args.max_steps // (len(train_main_dataloader) // args.gradient_accumulation_steps) + 1
+        args.num_train_epochs = args.max_steps // (len(train_domain_dataloader) // args.gradient_accumulation_steps) + 1
     else:
-        t_total = len(train_main_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
+        t_total = len(train_domain_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
     # AfterBERT
-    args.logging_steps = len(train_main_dataloader) // args.num_evals
+    args.logging_steps = len(train_domain_dataloader) // args.num_evals
     args.warmup_steps = args.warmup_proportion * t_total
 
     # Prepare optimizer and schedule (linear warmup and decay)
@@ -121,8 +118,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
 
     # Train!
     logger.info("***** Running training *****")
-    logger.info("  Num of Main examples = %d", len(train_main_dataset))
-    logger.info("  Num of Auxiliary examples = %d", len(train_aux_dataset))
+    logger.info("  Num of Combined examples = %d", len(train_domain_dataloader))
     logger.info("  Num Epochs = %d", args.num_train_epochs)
     logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
     logger.info(
@@ -141,16 +137,16 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
     if os.path.exists(args.model_name_or_path):
         # set global_step to gobal_step of last saved checkpoint from model path
         global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
-        epochs_trained = global_step // (len(train_main_dataloader) // args.gradient_accumulation_steps)
-        steps_trained_in_current_epoch = global_step % (len(train_main_dataloader) // args.gradient_accumulation_steps)
+        epochs_trained = global_step // (len(train_domain_dataloader) // args.gradient_accumulation_steps)
+        steps_trained_in_current_epoch = global_step % (
+                    len(train_domain_dataloader) // args.gradient_accumulation_steps)
 
         logger.info("  Continuing training from checkpoint, will skip to saved global_step")
         logger.info("  Continuing training from epoch %d", epochs_trained)
         logger.info("  Continuing training from global step %d", global_step)
         logger.info("  Will skip the first %d steps in the first epoch", steps_trained_in_current_epoch)
 
-    # tr_loss, logging_loss = 0.0, 0.0
-    main_tr_loss, dom_tr_loss, main_logging_loss, dom_logging_loss = 0.0, 0.0, 0.0, 0.0
+    tr_loss, logging_loss = 0.0, 0.0
     # AfterBERT
     best_val_loss = 1e5
 
@@ -160,10 +156,9 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
     )
     set_seed(args)  # Added here for reproductibility
     for _ in train_iterator:
-        epoch_iterator = tqdm(zip(train_main_dataloader, train_aux_dataloader), total=len(train_main_dataloader),
-                              desc="Iteration",
+        epoch_iterator = tqdm(train_domain_dataloader, desc="Iteration",
                               disable=args.local_rank not in [-1, 0])
-        for step, multi_batch in enumerate(epoch_iterator):
+        for step, batch in enumerate(epoch_iterator):
 
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
@@ -172,30 +167,15 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
 
             model.train()
 
-            if args.lambd_anneal:
-                p = float(global_step / 100 / t_total)
-                alpha = 2. / (1. + np.exp(-15 * p)) - 1
-                model.grl.lambd = alpha
-                # print('GRL parameter is : {}'.format(alpha))
+            batch = tuple(t.to(args.device) for t in batch)
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+            if args.model_type != "distilbert":
+                inputs["token_type_ids"] = (
+                    batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+            outputs = model(**inputs)
 
-            for ind, batch in enumerate(multi_batch):
-                batch = tuple(t.to(args.device) for t in batch)
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-                if args.model_type != "distilbert":
-                    inputs["token_type_ids"] = (
-                        batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
-                    )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                is_aux = True if ind == 1 else False
-                outputs = model(**inputs, aux=is_aux)
-
-                if not is_aux:
-                    # We either have both domain and main loss (Main dataset)
-                    main_loss, dom_loss = outputs[:2]  # model outputs are always tuple in transformers (see doc)
-                else:
-                    # Or we only have domain loss (Auxiliary dataset)
-                    dom_loss = torch.mean(torch.stack([dom_loss, outputs[1]]))
-
-            loss = main_loss + dom_loss
+            loss = outputs[0]
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -209,8 +189,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
                 loss.backward()
 
             # tr_loss += loss.item()
-            main_tr_loss += main_loss.item()
-            dom_tr_loss += dom_loss.item()
+            tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 if args.fp16:
                     torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
@@ -232,20 +211,18 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
 
-                    main_loss_scalar = (main_tr_loss - main_logging_loss) / args.logging_steps
-                    dom_loss_scalar = (dom_tr_loss - dom_logging_loss) / args.logging_steps
+                    loss_scalar = (tr_loss - logging_loss) / args.logging_steps
                     learning_rate_scalar = scheduler.get_lr()[0]
                     logs["learning_rate"] = learning_rate_scalar
-                    logs["main loss"] = main_loss_scalar
-                    logs["dom loss"] = dom_loss_scalar
-                    main_logging_loss, dom_logging_loss = main_tr_loss, dom_tr_loss
+                    logs["loss"] = loss_scalar
+                    logging_loss = tr_loss
 
                     print(json.dumps({**logs, **{"step": global_step}}))
 
                     # AfterBERT
-                    if args.local_rank in [-1, 0] and results["main_loss"] < best_val_loss:
+                    if args.local_rank in [-1, 0] and results["loss"] < best_val_loss:
                         # AfterBERT
-                        train_steps = global_step / len(train_main_dataloader)
+                        train_steps = global_step / len(train_domain_dataloader)
                         # Save model checkpoint
                         output_dir = os.path.join(args.output_dir,
                                                   "checkpoint".format(train_steps))
@@ -265,7 +242,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
                         logger.info("Saving optimizer and scheduler states to %s", output_dir)
 
                         # AfterBERT
-                        best_val_loss = results["main_loss"]
+                        best_val_loss = results["loss"]
 
                         output_ckpt_file = os.path.join(output_dir, "best_loss.txt")
                         with open(output_ckpt_file, "w+") as writer:
@@ -280,7 +257,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
             train_iterator.close()
             break
 
-    return global_step, main_tr_loss / global_step
+    return global_step, tr_loss / global_step
 
 
 def evaluate(args, model, prefix=""):
@@ -290,18 +267,15 @@ def evaluate(args, model, prefix=""):
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_main_dataset, eval_aux_dataset = load_after_examples(args, eval_task, args.aux_name, mode="dev")
+        eval_dataset = load_domain_examples(args, eval_task, args.aux_name, mode="dev")
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
 
-        args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu) // 2
+        args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
         # Note that DistributedSampler samples randomly
-        eval_main_sampler = SequentialSampler(eval_main_dataset)
-        eval_aux_sampler = SequentialSampler(eval_aux_dataset)
-
-        eval_main_dataloader = DataLoader(eval_main_dataset, sampler=eval_main_sampler, batch_size=args.eval_batch_size)
-        eval_aux_dataloader = DataLoader(eval_aux_dataset, sampler=eval_aux_sampler, batch_size=args.eval_batch_size)
+        eval_sampler = SequentialSampler(eval_dataset)
+        eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
         # multi-gpu eval
         if args.n_gpu > 1 and not isinstance(model, torch.nn.DataParallel):
@@ -309,59 +283,42 @@ def evaluate(args, model, prefix=""):
 
         # Eval!
         logger.info("***** Running evaluation {} *****".format(prefix))
-        logger.info("  Num of Main examples = %d", len(eval_main_dataset))
-        logger.info("  Num of Auxiliary examples = %d", len(eval_aux_dataset))
+        logger.info("  Num examples = %d", len(eval_dataset))
         logger.info("  Batch size = %d", args.eval_batch_size)
-        eval_main_loss, eval_dom_loss = 0.0, 0.0
+        eval_loss = 0.0
         nb_eval_steps = 0
         preds = None
         out_label_ids = None
-        for step, multi_batch in enumerate(tqdm(zip(eval_main_dataloader, eval_aux_dataloader), total=len(eval_main_dataloader),
-                          desc="Evaluating")):
+        for batch in tqdm(eval_dataloader, desc="Evaluating"):
             model.eval()
-
-            for ind, batch in enumerate(multi_batch):
-                batch = tuple(t.to(args.device) for t in batch)
-
-                with torch.no_grad():
-                    inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-                    if args.model_type != "distilbert":
-                        inputs["token_type_ids"] = (
-                            batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
-                        )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                    is_aux = True if ind == 1 else False
-                    outputs = model(**inputs, aux=is_aux)
-                    # tmp_eval_loss, logits = outputs[0], outputs[2]
-
-                    if not is_aux:
-                        input_labels = inputs["labels"]
-                        # We either have both domain and main loss (Main dataset)
-                        main_loss, dom_loss, logits = outputs[:3]  # model outputs are always tuple in transformers (see doc)
-                    else:
-                        # Or we only have domain loss (Auxiliary dataset)
-                        dom_loss = torch.mean(torch.stack([dom_loss, outputs[1]]))
+            batch = tuple(t.to(args.device) for t in batch)
 
             with torch.no_grad():
-                eval_main_loss += main_loss.mean().item()
-                eval_dom_loss += dom_loss.mean().item()
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+                if args.model_type != "distilbert":
+                    inputs["token_type_ids"] = (
+                        batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                    )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+                outputs = model(**inputs)
+                tmp_eval_loss, logits = outputs[:2]
+
+                eval_loss += tmp_eval_loss.mean().item()
             nb_eval_steps += 1
             if preds is None:
                 preds = logits.detach().cpu().numpy()
-                out_label_ids = input_labels.detach().cpu().numpy()[:, 0]
+                out_label_ids = inputs["labels"].detach().cpu().numpy()
             else:
                 preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-                out_label_ids = np.append(out_label_ids, input_labels.detach().cpu().numpy()[:, 0], axis=0)
+                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
 
-        eval_main_loss = eval_main_loss / nb_eval_steps
-        eval_dom_loss = eval_dom_loss / nb_eval_steps
+        eval_loss = eval_loss / nb_eval_steps
         if args.output_mode == "classification":
             preds = np.argmax(preds, axis=1)
         elif args.output_mode == "regression":
             preds = np.squeeze(preds)
-        result = compute_metrics(eval_task, preds, out_label_ids)
+        result = compute_metrics("domain", preds, out_label_ids)
         # AfterBERT
-        result.update({"main_loss": eval_main_loss})
-        result.update({"dom_loss": eval_dom_loss})
+        result.update({"loss": eval_loss})
         results.update(result)
 
         output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
@@ -435,7 +392,7 @@ def main(args):
     main_processor = processors[args.task_name]()
 
     args.output_mode = output_modes[args.task_name]
-    label_list = main_processor.get_labels()
+    label_list = ["0"]
     num_labels = len(label_list)
 
     # Load pretrained model and tokenizer
@@ -456,29 +413,33 @@ def main(args):
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
     model = model_class.from_pretrained(
-        args.model_name_or_path,
+        args.ckpt_file if args.ckpt_file else args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        lambd=args.lambd,
         mean_pool=args.mean_pool
     )
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-    # model.to(args.device)
+    model.classifier.reset_parameters()
+    model.to(args.device)
+
+    for param in model.bert.parameters():
+        param.requires_grad = False
 
     logger.info("Training/evaluation parameters %s", args)
 
     # AfterBert
     cache_after_datasets(args, args.task_name, args.aux_name, tokenizer, test=False)
-    # cache_after_datasets(args, args.task_name, args.aux_name, tokenizer, test=True)
+    # cache_after_datasets(args, args.task_name, arg
+    # s.aux_name, tokenizer, test=True)
 
     # Training
     if args.do_train:
-        train_main_dataset, train_aux_dataset = load_after_examples(args, args.task_name, args.aux_name, mode="train")
-        global_step, tr_loss = train(args, train_main_dataset, train_aux_dataset, model, tokenizer)
+        train_domain_dataset = load_domain_examples(args, args.task_name, args.aux_name, mode="train")
+        global_step, tr_loss = train(args, train_domain_dataset, model, tokenizer)
         # logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
 
@@ -486,14 +447,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='afterBert_finetune_sst2_europarl.yaml',
+                        default='probe_bert_mrpc_pubmed.yaml',
                         help="config file of input data")
 
     parser.add_argument("--seed", type=int, default=12, help="random seed for initialization")
-
-    parser.add_argument("--lambd", type=float, default=0.001, help="lambda hyperparameter for adversarial loss")
-
-    parser.add_argument("--lambd_anneal", type=bool, default=False, help="lambda hyperparameter for adversarial loss")
 
     parser.add_argument("--mean_pool", type=bool, default=False,
                         help="Whether to use mean pooling of the output hidden states insted of CLS token for the domain classifier")
@@ -532,11 +489,17 @@ if __name__ == "__main__":
     config = train_options(args.input)
     # Merge the input arguments with the configuration yaml
     args.__dict__.update(config)
+
+    if args.model_type == "bert-ft":
+        args.ckpt_file = "/data/data1/users/gvernikos/AfterBERT/MRPC/seed_12/checkpoint"
+    elif args.model_type == "afterbert":
+        args.cktp_file = "/data/data1/users/gvernikos/AfterBERT/MRPC/AFTER_PubMed/seed_12_lambda_0.01/checkpoint"
+    else:
+        args.ckpt_file = ""
+
     # Create one folder per seed
-    if args.lambd_anneal:
-        args.lambd = 0.00
     args.output_dir = "".join(
-        (args.output_dir, "/AFTER_{}/seed_{}_lambda_{}".format(args.auxiliary_name, args.seed, args.lambd)))
+        (args.output_dir, "/Probe/{}/{}/".format(args.auxiliary_name, args.model_type)))
     if args.mean_pool:
         args.output_dir += "_mean"
     args.data_dirs = [args.data_dir, "".join((DATA_DIR, config["auxiliary_name"]))]
