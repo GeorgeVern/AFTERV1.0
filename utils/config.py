@@ -23,7 +23,8 @@ def train_options(config_file, defaults_file=DEFAULT_OPTS):
     """
     config = load_config(os.path.join(MODEL_CNF_DIR, config_file))
     config["data_dir"] = "".join((DATA_DIR, config["task_name"]))
-    config["output_dir"] = "".join((TRAINED_PATH, config["task_name"]))
+    trained_model_filename = "After{}/".format(config["model_name_or_path"].split("-")[0].upper())
+    config["output_dir"] = "".join((TRAINED_PATH, trained_model_filename, config["task_name"]))
     default_opts = load_config(defaults_file)
     config.update(default_opts)
     return config

@@ -437,7 +437,7 @@ def main(args):
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        mean_pool=args.mean_pool
+        # mean_pool=args.mean_pool
     )
 
     if args.local_rank == 0:
@@ -508,10 +508,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='bert_finetune_sst2.yaml',
+                        default='xlnet_finetune_mrpc.yaml',
                         help="config file of input data")
 
-    parser.add_argument("--seed", type=int, default=93, help="random seed for initialization")
+    parser.add_argument("--seed", type=int, default=2319, help="random seed for initialization")
 
     parser.add_argument("--mean_pool", type=bool, default=False,
                         help="Whether to use mean pooling of the output hidden states insted of CLS token for the domain classifier")

@@ -16,10 +16,11 @@ from transformers import (
     AdamW,
     BertConfig,
     BertTokenizer,
-    get_linear_schedule_with_warmup,
+    get_linear_schedule_with_warmup, XLNetConfig, XLNetTokenizer,
 )
 
 from after_models.after_bert import AfterBertForSequenceClassification
+from after_models.after_xlnet import AfterXLNetForSequenceClassification
 from sys_config import DATA_DIR
 from utils.data_caching import cache_after_datasets, load_after_examples
 from utils.metrics import compute_metrics
@@ -41,6 +42,7 @@ ALL_MODELS = sum(
 
 MODEL_CLASSES = {
     "afterbert": (BertConfig, AfterBertForSequenceClassification, BertTokenizer),
+    "afterxlnet": (XLNetConfig, AfterXLNetForSequenceClassification, XLNetTokenizer)
 }
 
 
@@ -461,13 +463,13 @@ def main(args):
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
         lambd=args.lambd,
-        mean_pool=args.mean_pool
+        # mean_pool=args.mean_pool
     )
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-    # model.to(args.device)
+    model.to(args.device)
 
     logger.info("Training/evaluation parameters %s", args)
 
@@ -486,12 +488,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='afterBert_finetune_sst2_europarl.yaml',
+                        default='afterXLNet_finetune_mrpc_pubmed.yaml',
                         help="config file of input data")
 
-    parser.add_argument("--seed", type=int, default=12, help="random seed for initialization")
+    parser.add_argument("--seed", type=int, default=93, help="random seed for initialization")
 
-    parser.add_argument("--lambd", type=float, default=0.001, help="lambda hyperparameter for adversarial loss")
+    parser.add_argument("--lambd", type=float, default=-0.001, help="lambda hyperparameter for adversarial loss")
 
     parser.add_argument("--lambd_anneal", type=bool, default=False, help="lambda hyperparameter for adversarial loss")
 
