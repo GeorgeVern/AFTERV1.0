@@ -1,0 +1,22 @@
+model_type: afterxlnet
+model_name_or_path: xlnet-base-cased
+do_lower_case: True
+
+task_name: MRPC
+auxiliary_name: MATH
+max_seq_length: 128
+
+per_gpu_train_batch_size: 26
+per_gpu_eval_batch_size: 26
+
+#lambd: 0.001
+
+learning_rate: !!float "2e-5"
+weight_decay: 0.00
+bias_correction: True
+
+num_train_epochs: 4.0
+max_steps: -1
+warmup_proportion: 0.0
+
+num_evals: 5

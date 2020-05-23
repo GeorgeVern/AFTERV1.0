@@ -81,7 +81,7 @@ def cache_after_datasets(args, main, aux, tokenizer, test=False):
     for i, processor in enumerate(after_processors):
         modes = ["test"] if test else ["train", "dev"]
         cached_features_files = {}
-        data_cache_dir = "/".join(args.data_dir.split("/")[:-1])
+        data_cache_dir = os.path.join("/".join(args.data_dir.split("/")[:-1]),  "AFTER/", main)
 
         for mode in modes:
             cached_data_name = "cached_{}_{}_{}_{}".format(mode,
@@ -91,11 +91,12 @@ def cache_after_datasets(args, main, aux, tokenizer, test=False):
             if mode != "test" and tasks[i] not in standard_dev_tasks:
                 cached_data_name += "_{}".format(args.seed)
 
-            cached_features_files[mode] = os.path.join(data_cache_dir, "AFTER/", main, cached_data_name)
+            cached_features_files[mode] = os.path.join(data_cache_dir, cached_data_name)
 
         if os.path.exists(cached_features_files[mode]) and not args.overwrite_cache:
             logger.info("Features are already cached in %s", cached_features_files[mode])
         else:
+            os.makedirs(data_cache_dir, exist_ok=True)
             logger.info("Creating features from dataset file at %s", data_cache_dir)
             label_list = processor.get_labels()
             if tasks[i] in ["mnli", "mnli-mm"] and args.model_type in ["roberta", "xlmroberta"]:

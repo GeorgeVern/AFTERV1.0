@@ -508,7 +508,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='xlnet_finetune_mrpc.yaml',
+                        default='bert_finetune_qnli.yaml',
                         help="config file of input data")
 
     parser.add_argument("--seed", type=int, default=2319, help="random seed for initialization")
