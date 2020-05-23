@@ -6,8 +6,8 @@ task_name: QNLI
 auxiliary_name: AG_News
 max_seq_length: 128
 
-per_gpu_train_batch_size: 14
-per_gpu_eval_batch_size: 25
+per_gpu_train_batch_size: 28
+per_gpu_eval_batch_size: 50
 
 #lambd: 0.001
 

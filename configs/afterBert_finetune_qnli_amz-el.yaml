@@ -3,7 +3,7 @@ model_name_or_path: bert-base-uncased
 do_lower_case: True
 
 task_name: QNLI
-auxiliary_name: MATH
+auxiliary_name: AMZ-El
 max_seq_length: 128
 
 per_gpu_train_batch_size: 28
