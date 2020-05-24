@@ -2,7 +2,7 @@ model_type: afterbert
 model_name_or_path: bert-base-uncased
 do_lower_case: True
 
-task_name: RTE
+task_name: STS-B
 auxiliary_name: AG_News
 max_seq_length: 128
 

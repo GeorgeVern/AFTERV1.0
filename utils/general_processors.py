@@ -96,7 +96,7 @@ def convert_examples_to_features(
         if output_mode == "classification":
             label = label_map[example.label] if not multilabel else label_map[example.label[0]]
         elif output_mode == "regression":
-            label = float(example.label) if not multilabel else float(label_map[example.label[0]])
+            label = float(example.label) if not multilabel else float(example.label[0])
         else:
             raise KeyError(output_mode)
         if multilabel:
@@ -298,19 +298,19 @@ class StsbProcessor(DataProcessor):
             str(tensor_dict["label"].numpy()),
         )
 
-    def get_train_examples(self, data_dir):
+    def get_train_examples(self, data_dir, dom=-1):
         """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "train.tsv")), "train", dom)
 
-    def get_dev_examples(self, data_dir):
+    def get_dev_examples(self, data_dir, dom=-1):
         """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev", dom)
 
     def get_labels(self):
         """See base class."""
         return [None]
 
-    def _create_examples(self, lines, set_type):
+    def _create_examples(self, lines, set_type, dom=-1):
         """Creates examples for the training and dev sets."""
         examples = []
         for (i, line) in enumerate(lines):
@@ -320,6 +320,8 @@ class StsbProcessor(DataProcessor):
             text_a = line[7]
             text_b = line[8]
             label = line[-1]
+            if dom != -1:
+                label = [label, str(dom)]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
