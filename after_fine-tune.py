@@ -245,7 +245,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
                     print(json.dumps({**logs, **{"step": global_step}}))
 
                     # AfterBERT
-                    if args.local_rank in [-1, 0] and results["main_loss"] < best_val_loss:
+                    if args.local_rank in [-1, 0] and results["loss"] < best_val_loss:
                         # AfterBERT
                         train_steps = global_step / len(train_main_dataloader)
                         # Save model checkpoint
@@ -267,7 +267,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
                         logger.info("Saving optimizer and scheduler states to %s", output_dir)
 
                         # AfterBERT
-                        best_val_loss = results["main_loss"]
+                        best_val_loss = results["loss"]
 
                         output_ckpt_file = os.path.join(output_dir, "best_loss.txt")
                         with open(output_ckpt_file, "w+") as writer:
@@ -292,18 +292,15 @@ def evaluate(args, model, prefix=""):
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_main_dataset, eval_aux_dataset = load_after_examples(args, eval_task, args.aux_name, mode="dev")
+        eval_dataset, _ = load_after_examples(args, eval_task, args.aux_name, mode="dev")
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
 
-        args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu) // 2
+        args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
         # Note that DistributedSampler samples randomly
-        eval_main_sampler = SequentialSampler(eval_main_dataset)
-        eval_aux_sampler = SequentialSampler(eval_aux_dataset)
-
-        eval_main_dataloader = DataLoader(eval_main_dataset, sampler=eval_main_sampler, batch_size=args.eval_batch_size)
-        eval_aux_dataloader = DataLoader(eval_aux_dataset, sampler=eval_aux_sampler, batch_size=args.eval_batch_size)
+        eval_sampler = SequentialSampler(eval_dataset)
+        eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
         # multi-gpu eval
         if args.n_gpu > 1 and not isinstance(model, torch.nn.DataParallel):
@@ -311,18 +308,59 @@ def evaluate(args, model, prefix=""):
 
         # Eval!
         logger.info("***** Running evaluation {} *****".format(prefix))
-        logger.info("  Num of Main examples = %d", len(eval_main_dataset))
-        logger.info("  Num of Auxiliary examples = %d", len(eval_aux_dataset))
+        logger.info("  Num examples = %d", len(eval_dataset))
         logger.info("  Batch size = %d", args.eval_batch_size)
-        eval_main_loss, eval_dom_loss = 0.0, 0.0
+        eval_loss, dom_loss = 0.0, 0.0
         nb_eval_steps = 0
         preds = None
         out_label_ids = None
-        for step, multi_batch in enumerate(tqdm(zip(eval_main_dataloader, eval_aux_dataloader), total=len(eval_main_dataloader),
-                          desc="Evaluating")):
+        for batch in tqdm(eval_dataloader, desc="Evaluating"):
             model.eval()
+            batch = tuple(t.to(args.device) for t in batch)
 
-            for ind, batch in enumerate(multi_batch):
+            with torch.no_grad():
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+                if args.model_type != "distilbert":
+                    inputs["token_type_ids"] = (
+                        batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                    )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+                outputs = model(**inputs, aux=False)
+                tmp_eval_loss, tmp_dom_loss, logits = outputs[:3]
+
+                eval_loss += tmp_eval_loss.mean().item()
+                dom_loss += tmp_dom_loss.mean().item()
+            nb_eval_steps += 1
+            if preds is None:
+                preds = logits.detach().cpu().numpy()
+                out_label_ids = inputs["labels"].detach().cpu().numpy()[:, 0]
+            else:
+                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy()[:, 0], axis=0)
+
+        eval_loss = eval_loss / nb_eval_steps
+
+        if args.eval_domain:
+            _, eval_aux_dataset = load_after_examples(args, eval_task, args.aux_name, mode="dev")
+
+            if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
+                os.makedirs(eval_output_dir)
+
+            args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
+            # Note that DistributedSampler samples randomly
+            eval_aux_sampler = SequentialSampler(eval_aux_dataset)
+            eval_aux_dataloader = DataLoader(eval_aux_dataset, sampler=eval_aux_sampler, batch_size=args.eval_batch_size)
+
+            # multi-gpu eval
+            if args.n_gpu > 1 and not isinstance(model, torch.nn.DataParallel):
+                model = torch.nn.DataParallel(model)
+
+            # Eval!
+            logger.info("***** Running auxiliary evaluation {} *****".format(prefix))
+            logger.info("  Num examples = %d", len(eval_aux_dataset))
+            logger.info("  Batch size = %d", args.eval_batch_size)
+
+            for batch in tqdm(eval_aux_dataloader, desc="Evaluating"):
+                model.eval()
                 batch = tuple(t.to(args.device) for t in batch)
 
                 with torch.no_grad():
@@ -331,39 +369,23 @@ def evaluate(args, model, prefix=""):
                         inputs["token_type_ids"] = (
                             batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                         )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                    is_aux = True if ind == 1 else False
-                    outputs = model(**inputs, aux=is_aux)
-                    # tmp_eval_loss, logits = outputs[0], outputs[2]
+                    outputs = model(**inputs, aux=True)
+                    _, tmp_dom_loss, logits = outputs[:3]
 
-                    if not is_aux:
-                        input_labels = inputs["labels"]
-                        # We either have both domain and main loss (Main dataset)
-                        main_loss, dom_loss, logits = outputs[:3]  # model outputs are always tuple in transformers (see doc)
-                    else:
-                        # Or we only have domain loss (Auxiliary dataset)
-                        dom_loss = torch.mean(torch.stack([dom_loss, outputs[1]]))
+                    dom_loss += tmp_dom_loss.mean().item()
+                nb_eval_steps += 1
 
-            with torch.no_grad():
-                eval_main_loss += main_loss.mean().item()
-                eval_dom_loss += dom_loss.mean().item()
-            nb_eval_steps += 1
-            if preds is None:
-                preds = logits.detach().cpu().numpy()
-                out_label_ids = input_labels.detach().cpu().numpy()[:, 0]
-            else:
-                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-                out_label_ids = np.append(out_label_ids, input_labels.detach().cpu().numpy()[:, 0], axis=0)
+            dom_loss = dom_loss / nb_eval_steps
 
-        eval_main_loss = eval_main_loss / nb_eval_steps
-        eval_dom_loss = eval_dom_loss / nb_eval_steps
         if args.output_mode == "classification":
             preds = np.argmax(preds, axis=1)
         elif args.output_mode == "regression":
             preds = np.squeeze(preds)
         result = compute_metrics(eval_task, preds, out_label_ids)
         # AfterBERT
-        result.update({"main_loss": eval_main_loss})
-        result.update({"dom_loss": eval_dom_loss})
+        result.update({"loss": eval_loss})
+        if args.eval_domain:
+            result.update({"dom loss": dom_loss})
         results.update(result)
 
         output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
@@ -503,9 +525,9 @@ if __name__ == "__main__":
     parser.add_argument("--do_train", default=True, help="Whether to run training.")
 
     parser.add_argument(
-        "--eval_all_checkpoints",
+        "--eval_domain",
         action="store_true",
-        help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number",
+        help="Evaluate domain loss on validation set (doubles validation time)",
     )
 
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")

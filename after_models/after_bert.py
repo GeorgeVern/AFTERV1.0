@@ -82,9 +82,6 @@ class AfterBertForSequenceClassification(BertPreTrainedModel):
             inputs_embeds=inputs_embeds,
         )
 
-        pooled_output = outputs[1]
-        pooled_output = self.dropout(pooled_output)
-
         if self.mean_pool:
             input_mask_expanded = attention_mask.unsqueeze(-1).expand(outputs[0].size()).float()
             sum_embeddings = torch.sum(outputs[0] * input_mask_expanded, 1)
@@ -96,8 +93,8 @@ class AfterBertForSequenceClassification(BertPreTrainedModel):
         else:
             dom_pooled_output = outputs[1]
 
-        dom_pooled_output = self.dropout(dom_pooled_output)
-        reversed_pooled_output = self.grl(dom_pooled_output)
+        pooled_output = self.dropout(outputs[1])
+        reversed_pooled_output = self.grl(self.dropout(dom_pooled_output))
 
         logits = self.classifier(pooled_output)
         dom_logits = self.domain_classifier(reversed_pooled_output)
@@ -113,7 +110,7 @@ class AfterBertForSequenceClassification(BertPreTrainedModel):
                 loss_fct = CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, self.num_labels), labels[:, 0].view(-1)) if not aux else None
             dom_loss_fct = CrossEntropyLoss()
-            dom_loss = dom_loss_fct(dom_logits.view(-1, 2), labels[:, 1].view(-1))
+            dom_loss = dom_loss_fct(dom_logits.view(-1, 2), labels[:, 1].view(-1).long())
             outputs = (loss,) + (dom_loss,) + outputs
 
         return outputs  # (main_loss), (dom_loss), logits, domain_logits (hidden_states), (attentions)
