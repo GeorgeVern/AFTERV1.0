@@ -348,7 +348,8 @@ def evaluate(args, model, prefix=""):
             args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
             # Note that DistributedSampler samples randomly
             eval_aux_sampler = SequentialSampler(eval_aux_dataset)
-            eval_aux_dataloader = DataLoader(eval_aux_dataset, sampler=eval_aux_sampler, batch_size=args.eval_batch_size)
+            eval_aux_dataloader = DataLoader(eval_aux_dataset, sampler=eval_aux_sampler,
+                                             batch_size=args.eval_batch_size)
 
             # multi-gpu eval
             if args.n_gpu > 1 and not isinstance(model, torch.nn.DataParallel):
@@ -510,12 +511,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='afterBert_finetune_qnli_agnews.yaml',
+                        default='afterBert_finetune_sts-b_pubmed.yaml',
                         help="config file of input data")
 
-    parser.add_argument("--seed", type=int, default=93, help="random seed for initialization")
+    parser.add_argument("--seed", type=int, default=12, help="random seed for initialization")
 
-    parser.add_argument("--lambd", type=float, default=-0.001, help="lambda hyperparameter for adversarial loss")
+    parser.add_argument("--lambd", type=float, default=-0.1, help="lambda hyperparameter for adversarial loss")
 
     parser.add_argument("--lambd_anneal", type=bool, default=False, help="lambda hyperparameter for adversarial loss")
 
@@ -524,11 +525,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--do_train", default=True, help="Whether to run training.")
 
-    parser.add_argument(
-        "--eval_domain",
-        action="store_true",
-        help="Evaluate domain loss on validation set (doubles validation time)",
-    )
+    parser.add_argument("--eval_domain", type="True", default=False,
+                        help="Evaluate domain loss on validation set (doubles validation time)")
 
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
     parser.add_argument(
