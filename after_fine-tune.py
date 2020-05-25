@@ -525,7 +525,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--do_train", default=True, help="Whether to run training.")
 
-    parser.add_argument("--eval_domain", type="bool", default=False,
+    parser.add_argument("--eval_domain", type=bool, default=False,
                         help="Evaluate domain loss on validation set (doubles validation time)")
 
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
