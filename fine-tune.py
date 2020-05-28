@@ -7,6 +7,7 @@ import logging
 import os
 import random
 
+import csv
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -285,7 +286,7 @@ def train(args, train_dataset, model, tokenizer):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, prefix=""):
+def evaluate(args, model, prefix="", save_preds=False):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (args.task_name,)
     eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" else (args.output_dir,)
@@ -341,6 +342,13 @@ def evaluate(args, model, prefix=""):
             preds = np.argmax(preds, axis=1)
         elif args.output_mode == "regression":
             preds = np.squeeze(preds)
+        if save_preds:
+            metrics = np.array(preds == out_label_ids, dtype=int)
+            with open(eval_output_dir + '/preds.tsv', 'a+') as out_file:
+                tsv_writer = csv.writer(out_file, delimiter='\t')
+                tsv_writer.writerow(["preds", "labels"])
+                for pred, label, metric in zip(preds, out_label_ids, metrics):
+                    tsv_writer.writerow([pred, label])
         result = compute_metrics(eval_task, preds, out_label_ids)
         # AfterBERT
         result.update({"loss": eval_loss})
@@ -419,6 +427,11 @@ def main(args):
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
+    # find the checkpoint file in case of not training
+    checkpoints = list(
+        os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True))
+    )
+
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     config = config_class.from_pretrained(
@@ -433,7 +446,7 @@ def main(args):
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
     model = model_class.from_pretrained(
-        args.model_name_or_path,
+        args.model_name_or_path if args.do_train else checkpoints[0],
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
@@ -457,51 +470,25 @@ def main(args):
         global_step, tr_loss = train(args, train_dataset, model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
-    # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
-    if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        # Create output directory if needed
-        if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
-            os.makedirs(args.output_dir)
-
-        logger.info("Saving model checkpoint to %s", args.output_dir)
-        # Save a trained model, configuration and tokenizer using `save_pretrained()`.
-        # They can then be reloaded using `from_pretrained()`
-        model_to_save = (
-            model.module if hasattr(model, "module") else model
-        )  # Take care of distributed/parallel training
-        model_to_save.save_pretrained(args.output_dir)
-        tokenizer.save_pretrained(args.output_dir)
-
-        # Good practice: save your training arguments together with the trained model
-        torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
-
-        # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
-        tokenizer = tokenizer_class.from_pretrained(args.output_dir)
-        model.to(args.device)
 
     # Evaluation
     results = {}
-    if args.do_eval and args.local_rank in [-1, 0]:
-        tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
-        checkpoints = [args.output_dir]
-        if args.eval_all_checkpoints:
-            checkpoints = list(
-                os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True))
-            )
-            logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
-        logger.info("Evaluate the following checkpoints: %s", checkpoints)
-        for checkpoint in checkpoints:
-            global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-            prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
+    logger.info("Evaluate the following checkpoints: %s", checkpoints)
+    logs = {}
+    for checkpoint in checkpoints:
+        global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
+        prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class.from_pretrained(checkpoint)
-            model.to(args.device)
-            result = evaluate(args, model, prefix=prefix)
-            result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
-            results.update(result)
+        result = evaluate(args, model, prefix=prefix, save_preds=True)
+        result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
+        results.update(result)
 
-    return results
+        for key, value in results.items():
+            eval_key = "eval_{}".format(key)
+            logs[eval_key] = value
+        print(json.dumps({**logs}))
+
+    return
 
 
 if __name__ == "__main__":
@@ -516,8 +503,7 @@ if __name__ == "__main__":
     parser.add_argument("--mean_pool", type=bool, default=False,
                         help="Whether to use mean pooling of the output hidden states insted of CLS token for the domain classifier")
 
-    parser.add_argument("--do_train", default=True, help="Whether to run training.")
-    parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_train", type=bool, default=True, help="Whether to run training.")
 
     parser.add_argument(
         "--eval_all_checkpoints",
@@ -525,7 +511,7 @@ if __name__ == "__main__":
         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number",
     )
 
-    parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
+    parser.add_argument("--no_cuda", type=bool, default=False, help="Avoid using CUDA when available")
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory",
     )
