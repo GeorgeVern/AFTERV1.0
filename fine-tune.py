@@ -472,21 +472,17 @@ def main(args):
 
 
     # Evaluation
-    results = {}
-    logger.info("Evaluate the following checkpoints: %s", checkpoints)
+    logger.info("Evaluate the following checkpoint: %s", checkpoints[0])
     logs = {}
-    for checkpoint in checkpoints:
-        global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-        prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-        result = evaluate(args, model, prefix=prefix, save_preds=True)
-        result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
-        results.update(result)
+    prefix = checkpoints[0].split("/")[-1] if checkpoints[0].find("checkpoint") != -1 else ""
 
-        for key, value in results.items():
-            eval_key = "eval_{}".format(key)
-            logs[eval_key] = value
-        print(json.dumps({**logs}))
+    results = evaluate(args, model, prefix=prefix, save_preds=True)
+
+    for key, value in results.items():
+        eval_key = "eval_{}".format(key)
+        logs[eval_key] = value
+    print(json.dumps({**logs}))
 
     return
 
@@ -495,10 +491,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='bert_finetune_qnli.yaml',
+                        default='bert_finetune_wnli.yaml',
                         help="config file of input data")
 
-    parser.add_argument("--seed", type=int, default=2319, help="random seed for initialization")
+    parser.add_argument("--seed", type=int, default=93, help="random seed for initialization")
 
     parser.add_argument("--mean_pool", type=bool, default=False,
                         help="Whether to use mean pooling of the output hidden states insted of CLS token for the domain classifier")

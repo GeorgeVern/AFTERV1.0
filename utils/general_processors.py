@@ -459,19 +459,19 @@ class WnliProcessor(DataProcessor):
             str(tensor_dict["label"].numpy()),
         )
 
-    def get_train_examples(self, data_dir):
+    def get_train_examples(self, data_dir, dom=-1):
         """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "train.tsv")), "train", dom)
 
-    def get_dev_examples(self, data_dir):
+    def get_dev_examples(self, data_dir, dom=-1):
         """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev", dom)
 
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
-    def _create_examples(self, lines, set_type):
+    def _create_examples(self, lines, set_type, dom=-1):
         """Creates examples for the training and dev sets."""
         examples = []
         for (i, line) in enumerate(lines):
@@ -481,6 +481,8 @@ class WnliProcessor(DataProcessor):
             text_a = line[1]
             text_b = line[2]
             label = line[-1]
+            if dom != -1:
+                label = [label, str(dom)]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
@@ -846,6 +848,55 @@ class CompSciProcessor(DataProcessor):
         return examples
 
 
+class DBpediaProcessor(DataProcessor):
+    """Processor for the PubMed data set."""
+
+    def get_example_from_tensor_dict(self, tensor_dict):
+        """See base class."""
+        return InputExample(
+            tensor_dict["idx"].numpy(),
+            tensor_dict["sentence"].numpy().decode("utf-8"),
+            None,
+            str(tensor_dict["label"].numpy()),
+        )
+
+    def _read_csv(cls, input_file, quotechar=None):
+        """Reads a tab separated value file."""
+        with open(input_file, "r", encoding="utf-8-sig") as f:
+            return list(csv.reader(f, delimiter=",", quotechar=quotechar))
+
+    def get_train_dev_examples(self, data_dir, seed, split=0.1, dom=-1):
+        """Splits train set into train and dev sets."""
+        X, Y = [], []
+        lines = self._read_csv(os.path.join(data_dir, "train.csv"))
+        for line in lines:
+            X.append(",".join(line[1:]).rstrip())
+            Y.append(line[0])
+        X_train, X_dev, Y_train, Y_dev = train_test_split(X, Y, test_size=split, stratify=Y, random_state=seed)
+        train_examples = self._create_examples(zip(X_train, Y_train), "train", dom)
+        dev_examples = self._create_examples(zip(X_dev, Y_dev), "dev", dom)
+        return train_examples, dev_examples
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_csv(os.path.join(data_dir, "test.csv")), "test")
+
+    def get_labels(self):
+        """See base class."""
+        return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"]
+
+    def _create_examples(self, lines, set_type, dom=-1):
+        """Creates examples for the dev set."""
+        examples = []
+        for (i, line) in enumerate(lines):
+            guid = "%s-%s" % (set_type, i)
+            text_a, label = line
+            if dom != -1:
+                label = [label, str(dom)]
+            examples.append(InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+        return examples
+
+
 processors = {
     "cola": ColaProcessor,
     "mnli": MnliProcessor,
@@ -865,6 +916,7 @@ processors = {
     "pubmed": PubMedProcessor,
     "math": MathProcessor,
     "compsci": CompSciProcessor,
+    "dbpedia": DBpediaProcessor,
 }
 
 output_modes = {
@@ -886,4 +938,5 @@ output_modes = {
     "pubmed": "classification",
     "math": "classification",
     "compsci": "classification",
+    "dbpedia": "classification",
 }
