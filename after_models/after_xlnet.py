@@ -13,7 +13,7 @@ from after_models.after_modeling_utils import GradientReversal
     XLNET_START_DOCSTRING,
 )
 class AfterXLNetForSequenceClassification(XLNetPreTrainedModel):
-    def __init__(self, config, lambd):
+    def __init__(self, config, lambd, mean_pool=False):
         super().__init__(config)
         self.num_labels = config.num_labels
 
