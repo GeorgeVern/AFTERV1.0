@@ -471,18 +471,19 @@ def main(args):
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
 
-    # Evaluation
-    logger.info("Evaluate the following checkpoint: %s", checkpoints[0])
-    logs = {}
+    if len(checkpoints):
+        # Evaluation
+        logger.info("Evaluate the following checkpoint: %s", checkpoints[0])
+        logs = {}
 
-    prefix = checkpoints[0].split("/")[-1] if checkpoints[0].find("checkpoint") != -1 else ""
+        prefix = checkpoints[0].split("/")[-1] if checkpoints[0].find("checkpoint") != -1 else ""
 
-    results = evaluate(args, model, prefix=prefix, save_preds=True)
+        results = evaluate(args, model, prefix=prefix, save_preds=True)
 
-    for key, value in results.items():
-        eval_key = "eval_{}".format(key)
-        logs[eval_key] = value
-    print(json.dumps({**logs}))
+        for key, value in results.items():
+            eval_key = "eval_{}".format(key)
+            logs[eval_key] = value
+        print(json.dumps({**logs}))
 
     return
 

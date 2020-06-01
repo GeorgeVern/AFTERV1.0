@@ -1,13 +1,12 @@
-model_type: bert-ft
+model_type: bert
 model_name_or_path: bert-base-uncased
 do_lower_case: True
 
-task_name: SST-2
-auxiliary_name: PubMed
+task_name: WNLI
 max_seq_length: 128
 
-per_gpu_train_batch_size: 124
-per_gpu_eval_batch_size: 248
+per_gpu_train_batch_size: 28
+per_gpu_eval_batch_size: 50
 
 learning_rate: !!float "2e-5"
 weight_decay: 0.01
