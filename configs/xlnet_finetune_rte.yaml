@@ -8,7 +8,7 @@ max_seq_length: 128
 per_gpu_train_batch_size: 28
 per_gpu_eval_batch_size: 28
 
-learning_rate: !!float "3e-5"
+learning_rate: !!float "2e-5"
 weight_decay: 0.00
 bias_correction: True
 

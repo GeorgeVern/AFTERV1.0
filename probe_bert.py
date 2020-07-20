@@ -43,7 +43,7 @@ ALL_MODELS = sum(
 MODEL_CLASSES = {
     "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
     "bert-ft": (BertConfig, BertForSequenceClassification, BertTokenizer),
-    "afterbert": (BertConfig, AfterBertForSequenceClassification, BertTokenizer),
+    "afterbert": (BertConfig, BertForSequenceClassification, BertTokenizer),
 }
 
 
@@ -139,7 +139,7 @@ def train(args, train_domain_dataset, model, tokenizer):
         global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
         epochs_trained = global_step // (len(train_domain_dataloader) // args.gradient_accumulation_steps)
         steps_trained_in_current_epoch = global_step % (
-                    len(train_domain_dataloader) // args.gradient_accumulation_steps)
+                len(train_domain_dataloader) // args.gradient_accumulation_steps)
 
         logger.info("  Continuing training from checkpoint, will skip to saved global_step")
         logger.info("  Continuing training from epoch %d", epochs_trained)
@@ -389,10 +389,9 @@ def main(args):
     args.aux_name = args.auxiliary_name.lower()
     if args.aux_name not in processors:
         raise ValueError("Task not found: %s" % (args.aux_name))
-    main_processor = processors[args.task_name]()
 
-    args.output_mode = output_modes[args.task_name]
-    label_list = ["0"]
+    args.output_mode = "classification"
+    label_list = ["0", "1"]
     num_labels = len(label_list)
 
     # Load pretrained model and tokenizer
@@ -417,7 +416,7 @@ def main(args):
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        mean_pool=args.mean_pool
+        # mean_pool=args.mean_pool
     )
 
     if args.local_rank == 0:
@@ -433,8 +432,7 @@ def main(args):
 
     # AfterBert
     cache_after_datasets(args, args.task_name, args.aux_name, tokenizer, test=False)
-    # cache_after_datasets(args, args.task_name, arg
-    # s.aux_name, tokenizer, test=True)
+    # cache_after_datasets(args, args.task_name, args.aux_name, tokenizer, test=True)
 
     # Training
     if args.do_train:
@@ -450,7 +448,9 @@ if __name__ == "__main__":
                         default='probe_bert_mrpc_pubmed.yaml',
                         help="config file of input data")
 
-    parser.add_argument("--seed", type=int, default=12, help="random seed for initialization")
+    parser.add_argument("--seed", type=int, default=2319, help="random seed for initialization")
+
+    parser.add_argument("--lambd", type=float, default=0.01, help="lambda hyperparameter for adversarial loss")
 
     parser.add_argument("--mean_pool", type=bool, default=False,
                         help="Whether to use mean pooling of the output hidden states insted of CLS token for the domain classifier")
@@ -463,7 +463,7 @@ if __name__ == "__main__":
         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number",
     )
 
-    parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
+    parser.add_argument("--no_cuda", type=bool, default=False, help="Avoid using CUDA when available")
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory",
     )
@@ -491,15 +491,19 @@ if __name__ == "__main__":
     args.__dict__.update(config)
 
     if args.model_type == "bert-ft":
-        args.ckpt_file = "/data/data1/users/gvernikos/AfterBERT/MRPC/seed_12/checkpoint"
+        args.ckpt_file = "/data/data1/users/gvernikos/After_v1.0/AfterBERT/MRPC/seed_{}/checkpoint".format(args.seed)
+        args.lambd = "_"
     elif args.model_type == "afterbert":
-        args.cktp_file = "/data/data1/users/gvernikos/AfterBERT/MRPC/AFTER_PubMed/seed_12_lambda_0.01/checkpoint"
+        args.ckpt_file = "/data/data1/users/gvernikos/After_v1.0/AfterBERT/MRPC/AFTER_AG_News/seed_{}_lambda_{}/checkpoint".format(
+            args.seed, args.lambd
+        )
     else:
         args.ckpt_file = ""
+        args.lambd = "_"
 
     # Create one folder per seed
     args.output_dir = "".join(
-        (args.output_dir, "/Probe/{}/{}/".format(args.auxiliary_name, args.model_type)))
+        (args.output_dir, "/Probe/{}/{}/seed_{}_lambda_{}/".format(args.auxiliary_name, args.model_type, args.seed, args.lambd)))
     if args.mean_pool:
         args.output_dir += "_mean"
     args.data_dirs = [args.data_dir, "".join((DATA_DIR, config["auxiliary_name"]))]

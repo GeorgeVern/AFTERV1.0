@@ -238,7 +238,6 @@ def load_domain_examples(args, main, aux, mode):
     all_input_ids, all_attention_mask, all_token_type_ids, all_labels = [], [], [], []
 
     for i, task in enumerate(tasks):
-        cached_features_files = {}
         data_cache_dir = "/".join(args.data_dir.split("/")[:-1])
 
         cached_data_name = "cached_{}_{}_{}_{}".format(mode,
