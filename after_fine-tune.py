@@ -515,7 +515,6 @@ def main(args):
 
     # AfterBert
     cache_after_datasets(args, args.task_name, args.aux_name, tokenizer, test=False)
-    # cache_after_datasets(args, args.task_name, args.aux_name, tokenizer, test=True)
 
     # Training
     if args.do_train:
@@ -544,14 +543,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='afterBert_finetune_sts-b_pubmed.yaml',
+                        default='afterBert_finetune_rte_pubmed.yaml',
                         help="config file of input data")
 
     parser.add_argument("--seed", type=int, default=12, help="random seed for initialization")
 
-    parser.add_argument("--lambd", type=float, default=-0.1, help="lambda hyperparameter for adversarial loss")
+    parser.add_argument("--lambd", type=float, default=0.1, help="lambda hyperparameter for adversarial loss")
 
-    parser.add_argument("--lambd_anneal", type=bool, default=False, help="lambda hyperparameter for adversarial loss")
+    parser.add_argument("--lambd_anneal", type=bool, default=False,
+                        help="lambda hyperparameter annealing for adversarial loss")
 
     parser.add_argument("--mean_pool", type=bool, default=False,
                         help="Whether to use mean pooling of the output hidden states insted of CLS token for the domain classifier")

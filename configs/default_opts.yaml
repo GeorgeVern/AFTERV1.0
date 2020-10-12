@@ -7,8 +7,6 @@ evaluate_during_training: True
 config_name: ""
 #Pretrained tokenizer name or path if not the same as model_name
 tokenizer_name: ""
-#Where do you want to store the pre-trained models downloaded from s3
-cache_dir: "/data/data1/users/gvernikos/cache/pretrained_bert"
 #Number of updates steps to accumulate before performing a backward/update pass.
 gradient_accumulation_steps: 1
 #Epsilon for Adam optimizer.
