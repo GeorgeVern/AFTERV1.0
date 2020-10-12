@@ -7,11 +7,11 @@ In this work, we propose a new type of regularizer for the fine-tuning process o
 Empirical results on 4 natural language understanding tasks (CoLA, MRPC, SST-2 and RTE) from the GLUE benchmark wιth two different pretrained LMs (BERT and XLNet) demonstrate improved performance over standard fine-tuning.
 
 ## Model
-We extend the standard fine-tuning process of pretrained LMs with with an adversarial objective. This additional loss term is related to an adversarial classifier, that aims to discriminate between *in-domain* and *out-of-domain* text representations. In-domain refers to the labeled dataset of the task (**Main**) at hand while out-of-domain refers to unlabeled data from a different domain (**Auxiliary**).
+We extend the standard fine-tuning process of pretrained LMs with with an adversarial objective. This additional loss term is related to an adversarial classifier, that aims to discriminate between *in-domain* and *out-of-domain* text representations. In-domain refers to the labeled dataset of the task (**Main**) at hand while out-of-domain refers to **unlabeled data** from a different domain (**Auxiliary**). 
 
-<p align="center">
-  <img src="AFTER_fig.pdf" width="800">
-</p>
+Hence, we minimize the task-specific loss and at the same time maximize the loss of the domain classifier using a [Gradient Reversal Layer](https://jmlr.org/papers/v17/15-239.html):
+
+![AFTER_fig-1](https://user-images.githubusercontent.com/30960204/95763721-b88d2500-0caf-11eb-9220-c8d1df3b62ee.jpg)
 
 ## Reference
     @misc{vernikos2020domain,
