@@ -59,6 +59,6 @@ To download the **Main** datasets we use the `download_glue_data.py` script from
 *The default path for the datasets is AFTERV1.0/Datasets but any other path can be used (should agree with the `DATA_DIR` path specified in the `sys_config` script)*
 
 ### Auxiliary Data
+As **Auxiliary** data we use corpora from various domains. We provide scripts to download and preprocess the corpora used in our experiments, while any other corpora can be used as well.
 
 
-For the EUROPARL Auxiliary Data
