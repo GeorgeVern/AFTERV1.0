@@ -7,7 +7,11 @@ In this work, we propose a new type of regularizer for the fine-tuning process o
 Empirical results on 4 natural language understanding tasks (CoLA, MRPC, SST-2 and RTE) from the GLUE benchmark wιth two different pretrained LMs (BERT and XLNet) demonstrate improved performance over standard fine-tuning.
 
 ## Model
+We extend the standard fine-tuning process of pretrained LMs with with an adversarial objective. This additional loss term is related to an adversarial classifier, that aims to discriminate between *in-domain* and *out-of-domain* text representations. In-domain refers to the labeled dataset of the task (**Main**) at hand while out-of-domain refers to unlabeled data from a different domain (**Auxiliary**).
 
+<p align="center">
+  <img src="AFTER_fig.pdf" width="800">
+</p>
 
 ## Reference
     @misc{vernikos2020domain,
@@ -48,6 +52,13 @@ Then install the rest of the requirements:
 
 ### Download Data
 ### Main Data
-To download the **Main** datasets we use the `download_glue_data.py` script from [here](https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e).
+To download the **Main** datasets we use the `download_glue_data.py` script from [here](https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e). You can choose the datasets used in the paper by running the following command:
+
+` python download_glue_data.py --data_dir './Datasets' --tasks 'CoLA,SST,RTE,MRPC'`
+
+*The default path for the datasets is AFTERV1.0/Datasets but any other path can be used (should agree with the `DATA_DIR` path specified in the `sys_config` script)*
+
+### Auxiliary Data
+
 
 For the EUROPARL Auxiliary Data
