@@ -14,13 +14,17 @@ Hence, we minimize the task-specific loss and at the same time maximize the loss
 ![AFTER_fig-1](https://user-images.githubusercontent.com/30960204/95763721-b88d2500-0caf-11eb-9220-c8d1df3b62ee.jpg)
 
 ## Reference
-    @misc{vernikos2020domain,
-          title={Domain Adversarial Fine-Tuning as an Effective Regularizer}, 
-          author={Giorgos Vernikos and Katerina Margatina and Alexandra Chronopoulou and Ion Androutsopoulos},
-          year={2020},
-          eprint={2009.13366},
-          archivePrefix={arXiv},
-          primaryClass={cs.LG}
+    @inproceedings{vernikos-etal-2020-domain,
+        title = "{D}omain {A}dversarial {F}ine-{T}uning as an {E}ffective {R}egularizer",
+        author = "Vernikos, Giorgos  and
+          Margatina, Katerina  and
+          Chronopoulou, Alexandra  and
+          Androutsopoulos, Ion",
+        booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2020",
+        year = "2020",
+        url = "https://www.aclweb.org/anthology/2020.findings-emnlp.278",
+        doi = "10.18653/v1/2020.findings-emnlp.278",
+        pages = "3103--3112",
     }
     
 ## Prerequisites
