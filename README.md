@@ -1,4 +1,4 @@
-# AFTER
+# *AFTER* - *A*dversarial *F*ine-*T*uning as an *E*ffective *R*egularizer
 This repository contains source code for our EMNLP 2020 Findings paper: [Domain Adversarial Fine-Tuning as an Effective Regularizer](https://www.aclweb.org/anthology/2020.findings-emnlp.278/).
 
 ## Introduction
