@@ -13,7 +13,7 @@ TRAINED_PATH = BASE_DIR
 MODEL_CNF_DIR = os.path.join(BASE_DIR, "configs")
 
 # Path to store the dataset files
-DATA_DIR = os.path.join(BASE_DIR, "Datasets")
+DATA_DIR = os.path.join(BASE_DIR, "Datasets/")
 
 # Path to store the pre-trained models downloaded from s3
 CACHED_MODELS_DIR = os.path.join(BASE_DIR, "cached_models")
