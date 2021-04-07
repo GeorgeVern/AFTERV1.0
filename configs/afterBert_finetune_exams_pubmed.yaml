@@ -4,7 +4,7 @@ do_lower_case: False
 
 task_name: RTE
 new_task_name: exams
-new_data_dir: /mounts/data/proj/achron/exams-qa/data/exams/cross-lingual
+new_data_dir: cross-lingual
 para_type: ignore
 auxiliary_name: PubMed
 max_seq_length: 128

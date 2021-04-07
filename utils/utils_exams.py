@@ -90,129 +90,6 @@ class DataProcessor(object):
         raise NotImplementedError()
 
 
-class RaceProcessor(DataProcessor):
-    """Processor for the RACE data set."""
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {} train".format(data_dir))
-        high = os.path.join(data_dir, "train/high")
-        middle = os.path.join(data_dir, "train/middle")
-        high = self._read_txt(high)
-        middle = self._read_txt(middle)
-        return self._create_examples(high + middle, "train")
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {} dev".format(data_dir))
-        high = os.path.join(data_dir, "dev/high")
-        middle = os.path.join(data_dir, "dev/middle")
-        high = self._read_txt(high)
-        middle = self._read_txt(middle)
-        return self._create_examples(high + middle, "dev")
-
-    def get_test_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {} test".format(data_dir))
-        high = os.path.join(data_dir, "test/high")
-        middle = os.path.join(data_dir, "test/middle")
-        high = self._read_txt(high)
-        middle = self._read_txt(middle)
-        return self._create_examples(high + middle, "test")
-
-    def get_labels(self):
-        """See base class."""
-        return ["0", "1", "2", "3"]
-
-    def _read_txt(self, input_dir):
-        lines = []
-        files = glob.glob(input_dir + "/*txt")
-        for file in tqdm.tqdm(files, desc="read files"):
-            with open(file, "r", encoding="utf-8") as fin:
-                data_raw = json.load(fin)
-                data_raw["race_id"] = file
-                lines.append(data_raw)
-        return lines
-
-    def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        for (_, data_raw) in enumerate(lines):
-            race_id = "%s-%s" % (set_type, data_raw["race_id"])
-            article = data_raw["article"]
-            for i in range(len(data_raw["answers"])):
-                truth = str(ord(data_raw["answers"][i]) - ord("A"))
-                question = data_raw["questions"][i]
-                options = data_raw["options"][i]
-
-                examples.append(
-                    InputExample(
-                        example_id=race_id,
-                        question=question,
-                        contexts=[
-                            article,
-                            article,
-                            article,
-                            article,
-                        ],  # this is not efficient but convenient
-                        endings=[options[0], options[1], options[2], options[3]],
-                        label=truth,
-                    )
-                )
-        return examples
-
-
-class SwagProcessor(DataProcessor):
-    """Processor for the SWAG data set."""
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {} train".format(data_dir))
-        return self._create_examples(self._read_csv(os.path.join(data_dir, "train.csv")), "train")
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {} dev".format(data_dir))
-        return self._create_examples(self._read_csv(os.path.join(data_dir, "val.csv")), "dev")
-
-    def get_test_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {} dev".format(data_dir))
-        raise ValueError(
-            "For swag testing, the input file does not contain a label column. It can not be tested in current code"
-            "setting!"
-        )
-        return self._create_examples(self._read_csv(os.path.join(data_dir, "test.csv")), "test")
-
-    def get_labels(self):
-        """See base class."""
-        return ["0", "1", "2", "3"]
-
-    def _read_csv(self, input_file):
-        with open(input_file, "r", encoding="utf-8") as f:
-            return list(csv.reader(f))
-
-    def _create_examples(self, lines: List[List[str]], type: str):
-        """Creates examples for the training and dev sets."""
-        if type == "train" and lines[0][-1] != "label":
-            raise ValueError("For training, the input file must contain a label column.")
-
-        examples = [
-            InputExample(
-                example_id=line[2],
-                question=line[5],  # in the swag dataset, the
-                # common beginning of each
-                # choice is stored in "sent2".
-                contexts=[line[4], line[4], line[4], line[4]],
-                endings=[line[7], line[8], line[9], line[10]],
-                label=line[11],
-            )
-            for line in lines[1:]  # we skip the line with the column names
-        ]
-
-        return examples
-
-
 class ArcProcessor(DataProcessor):
     """Processor for the ARC data set (request from allennlp)."""
 
@@ -545,9 +422,6 @@ def convert_examples_to_features(
 
 
 processors = {
-    "race": RaceProcessor,
-    "swag": SwagProcessor,
-    "arc": ArcProcessor,
     "exams": ExamsProcessor,
 }
 
