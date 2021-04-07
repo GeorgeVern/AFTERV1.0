@@ -50,7 +50,7 @@ Install PyTorch `1.1.0` with the desired Cuda version if you want to use the GPU
 Clone the project:
 
 ```
-git clone https://github.com/alexandra-chron/AFTERV1.0.git
+git clone https://github.com/GeorgeVern/AFTERV1.0.git
 cd AFTERV1.0
 ```
 
