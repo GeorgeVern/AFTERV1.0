@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 import csv
 import numpy as np
@@ -44,7 +45,9 @@ from transformers import (
 )
 
 from after_models.bert_mean_pooled import BertForSequenceClassification
+from transformers import BertForMultipleChoice
 from utils.data_caching import cache_examples, load_examples
+from utils.load_exams_examples import load_and_cache_examples
 from utils.metrics import compute_metrics
 from utils.general_processors import processors, output_modes
 
@@ -70,7 +73,9 @@ ALL_MODELS = sum(
 )
 
 MODEL_CLASSES = {
-    "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
+    "bert": (BertConfig, BertForMultipleChoice, BertTokenizer),
+    "afterbert": (BertConfig, BertForMultipleChoice, BertTokenizer),
+
     "xlnet": (XLNetConfig, XLNetForSequenceClassification, XLNetTokenizer),
     "xlm": (XLMConfig, XLMForSequenceClassification, XLMTokenizer),
     "roberta": (RobertaConfig, RobertaForSequenceClassification, RobertaTokenizer),
@@ -232,7 +237,7 @@ def train(args, train_dataset, model, tokenizer):
                     if (
                             args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results = evaluate(args, model)
+                        results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
@@ -286,14 +291,16 @@ def train(args, train_dataset, model, tokenizer):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, prefix="", save_preds=False):
+def evaluate(args, model, tokenizer, prefix="", save_preds=False):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (args.task_name,)
     eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset = load_examples(args, eval_task, mode="dev")
+        eval_dataset, all_example_ids = load_and_cache_examples(
+            args, eval_task, tokenizer, evaluate=True, test=False
+        )
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
@@ -461,12 +468,12 @@ def main(args):
     logger.info("Training/evaluation parameters %s", args)
 
     # AfterBert
-    cache_examples(args, args.task_name, tokenizer, test=False)
+    # cache_examples(args, args.task_name, tokenizer, test=False)
     # cache_examples(args, args.task_name, tokenizer, test=True)
 
     # Training
     if args.do_train:
-        train_dataset = load_examples(args, args.task_name, mode="train")
+        train_dataset = load_and_cache_examples(args, args.new_task_name, tokenizer, evaluate=False)
         global_step, tr_loss = train(args, train_dataset, model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
@@ -492,7 +499,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='bert_finetune_wnli.yaml',
+                        default='afterBert_finetune_exams_pubmed.yaml',
                         help="config file of input data")
 
     parser.add_argument("--seed", type=int, default=93, help="random seed for initialization")

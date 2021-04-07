@@ -1,0 +1,25 @@
+model_type: afterbert
+model_name_or_path: bert-base-multilingual-cased
+do_lower_case: False
+
+task_name: RTE
+new_task_name: exams
+new_data_dir: /mounts/data/proj/achron/exams-qa/data/exams/cross-lingual
+para_type: ignore
+auxiliary_name: PubMed
+max_seq_length: 128
+
+per_gpu_train_batch_size: 7
+per_gpu_eval_batch_size: 7
+
+#lambd: 0.001
+
+learning_rate: !!float "2e-5"
+weight_decay: 0.01
+bias_correction: False
+
+num_train_epochs: 4.0
+max_steps: -1
+warmup_proportion: 0.1
+
+num_evals: 5

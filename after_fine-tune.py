@@ -6,6 +6,11 @@ import logging
 import os
 import random
 
+from after_models.after_bert_multiple_choice import AfterBertForMultipleChoice
+from utils.load_exams_examples import load_and_cache_examples
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 import glob
 
 import csv
@@ -44,7 +49,7 @@ ALL_MODELS = sum(
 )
 
 MODEL_CLASSES = {
-    "afterbert": (BertConfig, AfterBertForSequenceClassification, BertTokenizer),
+    "afterbert": (BertConfig, AfterBertForMultipleChoice, BertTokenizer),
     "afterxlnet": (XLNetConfig, AfterXLNetForSequenceClassification, XLNetTokenizer)
 }
 
@@ -126,7 +131,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
 
     # Train!
     logger.info("***** Running training *****")
-    logger.info("  Num of Main examples = %d", len(train_main_dataset))
+    logger.info("  Num of Main (QA) examples = %d", len(train_main_dataset))
     logger.info("  Num of Auxiliary examples = %d", len(train_aux_dataset))
     logger.info("  Num Epochs = %d", args.num_train_epochs)
     logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
@@ -177,20 +182,18 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
 
             model.train()
 
-            if args.lambd_anneal:
-                p = float(global_step / 100 / t_total)
-                alpha = 2. / (1. + np.exp(-15 * p)) - 1
-                model.grl.lambd = alpha
-                # print('GRL parameter is : {}'.format(alpha))
-
             for ind, batch in enumerate(multi_batch):
                 batch = tuple(t.to(args.device) for t in batch)
                 inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
                 if args.model_type != "distilbert":
                     inputs["token_type_ids"] = (
-                        batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                        batch[2] if args.model_type in ["afterbert","bert", "xlnet", "albert"] else None
                     )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
                 is_aux = True if ind == 1 else False
+                if not is_aux:
+                    inputs["dom_labels"] = batch[5]
+                else:
+                    inputs["dom_labels"] = inputs["labels"][:, 1]
                 outputs = model(**inputs, aux=is_aux)
 
                 if not is_aux:
@@ -232,7 +235,7 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
                     if (
                             args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results = evaluate(args, model)
+                        results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
@@ -288,14 +291,17 @@ def train(args, train_main_dataset, train_aux_dataset, model, tokenizer):
     return global_step, main_tr_loss / global_step
 
 
-def evaluate(args, model, prefix="", save_preds=False):
+def evaluate(args, model, tokenizer, prefix="", save_preds=False):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (args.task_name,)
     eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset, _ = load_after_examples(args, eval_task, args.aux_name, mode="dev")
+        # eval_dataset, _ = load_after_examples(args, eval_task, args.aux_name, mode="dev")
+        eval_dataset, all_example_ids = load_and_cache_examples(
+            args, eval_task, tokenizer, evaluate=True, test=False
+        )
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
@@ -325,8 +331,10 @@ def evaluate(args, model, prefix="", save_preds=False):
                 inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
                 if args.model_type != "distilbert":
                     inputs["token_type_ids"] = (
-                        batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+                        batch[2] if args.model_type in ["afterbert", "bert", "xlnet", "albert"] else None
                     )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+                inputs["dom_labels"] = batch[5]
+
                 outputs = model(**inputs, aux=False)
                 tmp_eval_loss, tmp_dom_loss, logits = outputs[:3]
 
@@ -335,10 +343,10 @@ def evaluate(args, model, prefix="", save_preds=False):
             nb_eval_steps += 1
             if preds is None:
                 preds = logits.detach().cpu().numpy()
-                out_label_ids = inputs["labels"].detach().cpu().numpy()[:, 0]
+                out_label_ids = inputs["labels"].detach().cpu().numpy()
             else:
                 preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy()[:, 0], axis=0)
+                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
 
         eval_loss = eval_loss / nb_eval_steps
 
@@ -502,9 +510,7 @@ def main(args):
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        lambd=args.lambd,
-        mean_pool=args.mean_pool
-    )
+        lambd=args.lambd)
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
@@ -518,7 +524,16 @@ def main(args):
 
     # Training
     if args.do_train:
-        train_main_dataset, train_aux_dataset = load_after_examples(args, args.task_name, args.aux_name, mode="train")
+        _, train_aux_dataset = load_after_examples(args, args.task_name, args.aux_name, mode="train")
+
+        train_main_dataset = load_and_cache_examples(args, args.new_task_name, tokenizer, evaluate=False)
+
+        # train_main_dataset.tensors[0] input_ids
+        # train_main_dataset.tensors[1] attention ids (input mask)
+        # train_main_dataset.tensors[2] segment_ids
+        # train_main_dataset.tensors[3] label_ids
+        # train_main_dataset.tensors[4] answers_masks
+
         global_step, tr_loss = train(args, train_main_dataset, train_aux_dataset, model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
@@ -529,7 +544,7 @@ def main(args):
 
         prefix = checkpoints[0].split("/")[-1] if checkpoints[0].find("checkpoint") != -1 else ""
 
-        results = evaluate(args, model, prefix=prefix, save_preds=True)
+        results = evaluate(args, model, tokenizer, prefix=prefix, save_preds=True)
 
         for key, value in results.items():
             eval_key = "eval_{}".format(key)
@@ -543,7 +558,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", "--input", required=False,
-                        default='afterBert_finetune_rte_pubmed.yaml',
+                        default='afterBert_finetune_exams_pubmed.yaml',
                         help="config file of input data")
 
     parser.add_argument("--seed", type=int, default=12, help="random seed for initialization")
