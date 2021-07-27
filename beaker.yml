@@ -1,0 +1,14 @@
+version: v2-alpha
+description: AFTER
+tasks:
+  - name: training
+    image:
+      beaker: AlexandraC/after
+    arguments: [python, -u, after_fine-tune.py]
+    result:
+      path: /output
+    resources:
+      gpuCount: 1
+    context:
+      cluster: ai2/alexandrac-1
+      priority: normal
