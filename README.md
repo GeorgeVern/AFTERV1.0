@@ -45,7 +45,7 @@ We show empirically that the adversarial term acts as a regularizer that preserv
     conda activate after_env
 Install PyTorch `1.1.0` with the desired Cuda version if you want to use the GPU:
 
-`conda install pytorch==1.1.0 torchvision -c pytorch`
+    conda install pytorch==1.1.0 torchvision -c pytorch
 
 Clone the project:
 
@@ -56,13 +56,13 @@ cd AFTERV1.0
 
 Then install the rest of the requirements:
 
-`pip install -r requirements.txt`
+    pip install -r requirements.txt
 
 ### Download Data
 #### Main Data
 To download the **Main** datasets we use the `download_glue_data.py` script from [here](https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e). You can choose the datasets used in the paper by running the following command:
 
-` python download_glue_data.py --data_dir './Datasets' --tasks 'CoLA,SST,RTE,MRPC'`
+    python download_glue_data.py --data_dir './Datasets' --tasks 'CoLA,SST,RTE,MRPC
 
 *The default path for the datasets is AFTERV1.0/Datasets but any other path can be used (should agree with the `DATA_DIR` path specified in the `sys_config` script)*
 
@@ -74,7 +74,7 @@ As **Auxiliary** data we use corpora from various domains. We provide scripts to
 
 To run AFTER with BERT, you need the following command:
 
-` python after_fine-tune.py -i afterBert_finetune_cola_europarl --lambd 0.1`
+    python after_fine-tune.py -i afterBert_finetune_cola_europarl --lambd 0.1
 
 `lambd` refers to lambda, the weight of the joint loss function that we use.
 
